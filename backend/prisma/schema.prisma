@@ -1,0 +1,367 @@
+// Multi-tenant School Management Platform
+// Schema Prisma
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ─── TENANT (École) ─────────────────────────────────────────────────────────
+
+model Tenant {
+  id          String   @id @default(uuid())
+  name        String                       // Nom de l'école
+  slug        String   @unique             // sous-domaine / identifiant unique
+  email       String   @unique
+  phone       String?
+  address     String?
+  city        String?
+  country     String   @default("SN")
+  logo        String?
+  isActive    Boolean  @default(true)
+  plan        Plan     @default(FREE)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  users        User[]
+  academicYears AcademicYear[]
+  classes      Classe[]
+  subjects     Subject[]
+  students     Student[]
+  teachers     Teacher[]
+  announcements Announcement[]
+
+  @@map("tenants")
+}
+
+enum Plan {
+  FREE
+  BASIC
+  PREMIUM
+  ENTERPRISE
+}
+
+// ─── UTILISATEUR ─────────────────────────────────────────────────────────────
+
+model User {
+  id           String    @id @default(uuid())
+  tenantId     String
+  email        String
+  password     String
+  firstName    String
+  lastName     String
+  phone        String?
+  avatar       String?
+  role         Role      @default(TEACHER)
+  isActive     Boolean   @default(true)
+  lastLoginAt  DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  tenant       Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  teacher      Teacher?
+  refreshTokens RefreshToken[]
+
+  @@unique([tenantId, email])
+  @@map("users")
+}
+
+enum Role {
+  SUPER_ADMIN   // Admin de la plateforme
+  ADMIN         // Directeur / Administrateur école
+  TEACHER       // Enseignant
+  STUDENT       // Élève
+  PARENT        // Parent d'élève
+}
+
+model RefreshToken {
+  id        String   @id @default(uuid())
+  userId    String
+  token     String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("refresh_tokens")
+}
+
+// ─── ANNÉE ACADÉMIQUE ─────────────────────────────────────────────────────────
+
+model AcademicYear {
+  id          String   @id @default(uuid())
+  tenantId    String
+  name        String                       // Ex: "2024-2025"
+  startDate   DateTime
+  endDate     DateTime
+  isCurrent   Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  classes     Classe[]
+  enrollments Enrollment[]
+  grades      Grade[]
+  attendances Attendance[]
+
+  @@unique([tenantId, name])
+  @@map("academic_years")
+}
+
+// ─── CLASSE ───────────────────────────────────────────────────────────────────
+
+model Classe {
+  id             String      @id @default(uuid())
+  tenantId       String
+  academicYearId String
+  name           String                     // Ex: "6ème A", "Terminale S"
+  level          String                     // Ex: "6ème", "Terminale"
+  section        String?                    // Ex: "A", "B", "S"
+  maxStudents    Int         @default(40)
+  room           String?                    // Salle
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+
+  tenant         Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  academicYear   AcademicYear @relation(fields: [academicYearId], references: [id])
+  enrollments    Enrollment[]
+  schedules      Schedule[]
+  grades         Grade[]
+  attendances    Attendance[]
+
+  @@unique([tenantId, academicYearId, name])
+  @@map("classes")
+}
+
+// ─── MATIÈRE ──────────────────────────────────────────────────────────────────
+
+model Subject {
+  id          String   @id @default(uuid())
+  tenantId    String
+  name        String                       // Ex: "Mathématiques"
+  code        String?                      // Ex: "MATH"
+  coefficient Int      @default(1)
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  schedules   Schedule[]
+  grades      Grade[]
+  teacherSubjects TeacherSubject[]
+
+  @@unique([tenantId, name])
+  @@map("subjects")
+}
+
+// ─── ÉLÈVE ────────────────────────────────────────────────────────────────────
+
+model Student {
+  id              String    @id @default(uuid())
+  tenantId        String
+  matricule       String                     // Numéro d'immatriculation
+  firstName       String
+  lastName        String
+  dateOfBirth     DateTime?
+  gender          Gender    @default(MALE)
+  address         String?
+  phone           String?
+  email           String?
+  parentName      String?
+  parentPhone     String?
+  parentEmail     String?
+  photo           String?
+  isActive        Boolean   @default(true)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  tenant          Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  enrollments     Enrollment[]
+  grades          Grade[]
+  attendances     Attendance[]
+
+  @@unique([tenantId, matricule])
+  @@map("students")
+}
+
+enum Gender {
+  MALE
+  FEMALE
+}
+
+// ─── ENSEIGNANT ───────────────────────────────────────────────────────────────
+
+model Teacher {
+  id              String   @id @default(uuid())
+  tenantId        String
+  userId          String?  @unique
+  matricule       String
+  firstName       String
+  lastName        String
+  email           String?
+  phone           String?
+  specialization  String?
+  dateOfBirth     DateTime?
+  hireDate        DateTime?
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  tenant          Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user            User?    @relation(fields: [userId], references: [id])
+  teacherSubjects TeacherSubject[]
+  schedules       Schedule[]
+  grades          Grade[]
+  attendances     Attendance[]
+
+  @@unique([tenantId, matricule])
+  @@map("teachers")
+}
+
+model TeacherSubject {
+  id          String   @id @default(uuid())
+  teacherId   String
+  subjectId   String
+  createdAt   DateTime @default(now())
+
+  teacher     Teacher  @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+  subject     Subject  @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+
+  @@unique([teacherId, subjectId])
+  @@map("teacher_subjects")
+}
+
+// ─── INSCRIPTION ──────────────────────────────────────────────────────────────
+
+model Enrollment {
+  id             String      @id @default(uuid())
+  studentId      String
+  classeId       String
+  academicYearId String
+  enrolledAt     DateTime    @default(now())
+  status         EnrollmentStatus @default(ACTIVE)
+
+  student        Student     @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  classe         Classe      @relation(fields: [classeId], references: [id])
+  academicYear   AcademicYear @relation(fields: [academicYearId], references: [id])
+
+  @@unique([studentId, classeId, academicYearId])
+  @@map("enrollments")
+}
+
+enum EnrollmentStatus {
+  ACTIVE
+  TRANSFERRED
+  DROPPED
+  GRADUATED
+}
+
+// ─── EMPLOI DU TEMPS ──────────────────────────────────────────────────────────
+
+model Schedule {
+  id          String    @id @default(uuid())
+  classeId    String
+  subjectId   String
+  teacherId   String
+  dayOfWeek   Int                            // 1=Lundi, 5=Vendredi
+  startTime   String                         // "08:00"
+  endTime     String                         // "09:00"
+  room        String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  classe      Classe    @relation(fields: [classeId], references: [id], onDelete: Cascade)
+  subject     Subject   @relation(fields: [subjectId], references: [id])
+  teacher     Teacher   @relation(fields: [teacherId], references: [id])
+
+  @@map("schedules")
+}
+
+// ─── NOTE / BULLETIN ──────────────────────────────────────────────────────────
+
+model Grade {
+  id             String    @id @default(uuid())
+  tenantId       String
+  studentId      String
+  subjectId      String
+  classeId       String
+  teacherId      String
+  academicYearId String
+  period         String                       // "T1", "T2", "T3" (Trimestre)
+  value          Float                        // Note sur 20
+  maxValue       Float     @default(20)
+  type           GradeType @default(EXAM)     // Devoir, Examen
+  comment        String?
+  gradedAt       DateTime  @default(now())
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  student        Student   @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  subject        Subject   @relation(fields: [subjectId], references: [id])
+  classe         Classe    @relation(fields: [classeId], references: [id])
+  teacher        Teacher   @relation(fields: [teacherId], references: [id])
+  academicYear   AcademicYear @relation(fields: [academicYearId], references: [id])
+
+  @@map("grades")
+}
+
+enum GradeType {
+  HOMEWORK    // Devoir maison
+  CLASSWORK   // Devoir en classe
+  EXAM        // Examen
+  ORAL        // Oral
+  PROJECT     // Projet
+}
+
+// ─── PRÉSENCE / ABSENCE ───────────────────────────────────────────────────────
+
+model Attendance {
+  id             String           @id @default(uuid())
+  tenantId       String
+  studentId      String
+  classeId       String
+  teacherId      String
+  academicYearId String
+  date           DateTime
+  status         AttendanceStatus @default(PRESENT)
+  reason         String?
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  student        Student          @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  classe         Classe           @relation(fields: [classeId], references: [id])
+  teacher        Teacher          @relation(fields: [teacherId], references: [id])
+  academicYear   AcademicYear     @relation(fields: [academicYearId], references: [id])
+
+  @@unique([studentId, classeId, date])
+  @@map("attendances")
+}
+
+enum AttendanceStatus {
+  PRESENT
+  ABSENT
+  LATE
+  EXCUSED
+}
+
+// ─── ANNONCE ──────────────────────────────────────────────────────────────────
+
+model Announcement {
+  id          String   @id @default(uuid())
+  tenantId    String
+  title       String
+  content     String
+  targetRole  Role?                          // null = tous
+  isPublished Boolean  @default(true)
+  publishedAt DateTime @default(now())
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@map("announcements")
+}
