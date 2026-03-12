@@ -1,0 +1,58 @@
+version: '3.9'
+
+services:
+  # ─── PostgreSQL ─────────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: edika2_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: edika
+      POSTGRES_PASSWORD: edika2024
+      POSTGRES_DB: edika2_db
+    ports:
+      - '5432:5432'
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U edika -d edika2_db']
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # ─── Backend NestJS ──────────────────────────────────────────────────────────
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: edika2_backend
+    restart: unless-stopped
+    env_file: ./backend/.env
+    environment:
+      DATABASE_URL: postgresql://edika:edika2024@postgres:5432/edika2_db
+    ports:
+      - '3001:3001'
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./backend:/app
+      - /app/node_modules
+
+  # ─── Frontend React/Vite ─────────────────────────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: edika2_frontend
+    restart: unless-stopped
+    ports:
+      - '5173:5173'
+    depends_on:
+      - backend
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+
+volumes:
+  postgres_data:
