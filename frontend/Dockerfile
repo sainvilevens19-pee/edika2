@@ -1,10 +1,12 @@
 FROM node:20-alpine AS base
 WORKDIR /app
 COPY package*.json ./
-RUN npm ci
+# npm ci exige un lockfile; on utilise npm install (crée node_modules sans lockfile requis)
+RUN npm install
 
 FROM base AS development
 COPY . .
+EXPOSE 5173
 CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0"]
 
 FROM base AS builder

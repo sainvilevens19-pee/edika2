@@ -1,10 +1,14 @@
 generator client {
-  provider = "prisma-client-js"
+  provider        = "prisma-client-js"
+  // multiSchema est GA dans Prisma 7 — pas besoin de previewFeatures
+  previewFeatures = []
 }
 
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
+  // Prisma 7 : déclaration explicite du schema PostgreSQL (multi-schema GA)
+  schemas  = ["public"]
 }
 
 // ─── École ────────────────────────────────────────────────────────────────────
@@ -27,6 +31,7 @@ model School {
   teacherAssignments  TeacherAssignment[]
   academicYears       AcademicYear[]
 
+  @@schema("public")
   @@map("schools")
 }
 
@@ -46,6 +51,7 @@ model AcademicYear {
   teacherAssignments TeacherAssignment[]
 
   @@unique([schoolId, label])
+  @@schema("public")
   @@map("academic_years")
 }
 
@@ -53,7 +59,7 @@ model AcademicYear {
 
 model User {
   id        String   @id @default(uuid())
-  // Null pour PARENT et TEACHER (pas encore assigné)
+  // Null pour PARENT et TEACHER (pas encore assigné à une école)
   schoolId  String?
   email     String   @unique
   password  String
@@ -72,6 +78,7 @@ model User {
   parentProfile   Parent?
   refreshTokens   RefreshToken[]
 
+  @@schema("public")
   @@map("users")
 }
 
@@ -83,6 +90,8 @@ enum Role {
   TEACHER
   STUDENT
   PARENT
+
+  @@schema("public")
 }
 
 // ─── Token de rafraîchissement ────────────────────────────────────────────────
@@ -96,32 +105,36 @@ model RefreshToken {
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  @@schema("public")
   @@map("refresh_tokens")
 }
 
 // ─── Élève ────────────────────────────────────────────────────────────────────
 
 model Student {
-  id            String   @id @default(uuid())
-  userId        String   @unique
+  id            String    @id @default(uuid())
+  userId        String    @unique
   schoolId      String
-  dossierNumber String   @unique // Numéro de dossier — utilisé par les parents pour lier leurs enfants
+  dossierNumber String    @unique // Numéro de dossier utilisé par les parents pour lier leurs enfants
   dateOfBirth   DateTime?
-  gender        Gender   @default(MALE)
+  gender        Gender    @default(MALE)
   address       String?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 
   user    User            @relation(fields: [userId], references: [id], onDelete: Cascade)
   school  School          @relation(fields: [schoolId], references: [id])
   parents ParentStudent[]
 
+  @@schema("public")
   @@map("students")
 }
 
 enum Gender {
   MALE
   FEMALE
+
+  @@schema("public")
 }
 
 // ─── Parent ───────────────────────────────────────────────────────────────────
@@ -135,6 +148,7 @@ model Parent {
   user     User            @relation(fields: [userId], references: [id], onDelete: Cascade)
   children ParentStudent[]
 
+  @@schema("public")
   @@map("parents")
 }
 
@@ -149,6 +163,7 @@ model ParentStudent {
   student Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
 
   @@id([parentId, studentId])
+  @@schema("public")
   @@map("parent_students")
 }
 
@@ -157,6 +172,8 @@ enum Relationship {
   MOTHER
   GUARDIAN
   PARENT
+
+  @@schema("public")
 }
 
 // ─── Professeur ───────────────────────────────────────────────────────────────
@@ -172,11 +189,12 @@ model Teacher {
   user        User                @relation(fields: [userId], references: [id], onDelete: Cascade)
   assignments TeacherAssignment[]
 
+  @@schema("public")
   @@map("teachers")
 }
 
 // Affectation Professeur ↔ École / Année scolaire
-// Un professeur peut être assigné à plusieurs écoles sur plusieurs années
+// Un professeur peut être assigné à plusieurs écoles et années
 model TeacherAssignment {
   id             String   @id @default(uuid())
   teacherId      String
@@ -191,5 +209,6 @@ model TeacherAssignment {
   academicYear AcademicYear @relation(fields: [academicYearId], references: [id])
 
   @@unique([teacherId, schoolId, academicYearId])
+  @@schema("public")
   @@map("teacher_assignments")
 }

@@ -1,7 +1,8 @@
 FROM node:20-alpine AS base
 WORKDIR /app
 COPY package*.json ./
-RUN npm ci
+# npm ci exige un lockfile; on utilise npm install (crée node_modules sans lockfile requis)
+RUN npm install
 
 FROM base AS development
 COPY . .
@@ -19,4 +20,5 @@ COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/prisma ./prisma
 COPY package*.json ./
+EXPOSE 3000
 CMD ["node", "dist/main"]
